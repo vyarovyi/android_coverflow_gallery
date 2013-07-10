@@ -13,7 +13,7 @@ public class CoverFlowApplication extends Application {
         super.onCreate();
 
         File ext = Environment.getExternalStorageDirectory();
-        File cacheDir = new File(ext, ".coverflow_example");
+        File cacheDir = new File(ext, "coverflow_example");
         AQUtility.setCacheDir(cacheDir);
     }
 

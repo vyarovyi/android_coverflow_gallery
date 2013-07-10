@@ -1,69 +1,69 @@
+/*
+ * Copyright 2013 - Android Coverflow Gallery. (Vladyslav Yarovyi)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+
 package com.masterofcode.android.coverflow_library;
 
+import android.app.Activity;
 import android.content.Context;
-import android.graphics.*;
+import android.graphics.PixelFormat;
+import android.graphics.RectF;
 import android.opengl.GLSurfaceView;
 import android.opengl.GLU;
-import android.opengl.GLUtils;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.animation.AnimationUtils;
 import com.masterofcode.android.coverflow_library.listeners.CoverFlowListener;
 import com.masterofcode.android.coverflow_library.listeners.DataChangedListener;
+import com.masterofcode.android.coverflow_library.render_objects.Background;
+import com.masterofcode.android.coverflow_library.render_objects.CoverImage;
+import com.masterofcode.android.coverflow_library.render_objects.EmptyImage;
+import com.masterofcode.android.coverflow_library.utils.CoverflowQuery;
 import com.masterofcode.android.coverflow_library.utils.DataCache;
+import com.masterofcode.android.coverflow_library.utils.EQuality;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
+/**
+ * Custom Cover Flow Gallery View.
+ * This core class is responsible for drawing all images.
+ *
+ * @author skynet67
+ */
 public class CoverFlowOpenGL extends GLSurfaceView implements GLSurfaceView.Renderer{
 
-    private static final String TAG = "AndroidCoverFlowGallery";
-	
 	private static final int TOUCH_MINIMUM_MOVE = 5;
-	private static final int IMAGE_SIZE = 512; // the bitmap size we use for the texture
-	private static final int MAX_TILES = 21; // the maximum tiles in the cache
-	private static final int VISIBLE_TILES = 5; // the visble tiles left and right
-	
-	private static final float SCALE = 0.35f; // the scale of surface view
-	private static final float SPREAD_IMAGE = 0.14f;
-	private static final float FLANK_SPREAD = 0.4f;
 	private static final float FRICTION = 10.0f;
-	private static final float MAX_SPEED = 6.0f;
-	
-	private static final float[] GVertices = new float[]{
-		-1.0f, -1.0f, 0.0f,
-		 1.0f, -1.0f, 0.0f,
-		-1.0f,  1.0f, 0.0f,
-		 1.0f,  1.0f, 0.0f,
-	};
-	
-	private static final float[] GTextures = new float[]{
-		0.0f, 1.0f,
-		1.0f, 1.0f,
-		0.0f, 0.0f,
-		1.0f, 0.0f,
-	};
-	
-	private GL10 mGLContext;
-	private FloatBuffer mVerticesBuffer;
-	private FloatBuffer mTexturesBuffer;
-	private float[] mMatrix;
-	
-	private int mBgTexture;
-	private FloatBuffer mBgVerticesBuffer;
-	private FloatBuffer mBgTexturesBuffer;
-	private int mBgBitmapId;
-	private boolean mInitBackground;
-    
+    private static final float MAX_SPEED = 6.0f;
+
+    private int maxTiles = 21; // the maximum tiles in the cache
+    private int visibleTiles = 5; // the visble tiles left and right
+
+    private int imageSize = 512; // the bitmap size we use for the texture
+
     private float mOffset;
     private int mLastOffset;
     private RectF mTouchRect;
     
     private int mWidth;
+    private int mHeight;
+
     private boolean mTouchMoved;
     private float mTouchStartPos;
     private float mTouchStartX;
@@ -77,24 +77,41 @@ public class CoverFlowOpenGL extends GLSurfaceView implements GLSurfaceView.Rend
     private Runnable mAnimationRunnable;
     private VelocityTracker mVelocity;
     
-    private boolean mStopBackgroundThread;
     private CoverFlowListener mListener;
-    private DataCache<Integer, CoverFlowRecord> mCache;
+    private DataCache<Integer, CoverImage> mCache;
 
+    private CoverflowQuery aQuery;
+
+    private List<String> imagesList;
+
+    private List<CoverImage> images;
+
+    private Activity mActivity;
+
+    private EmptyImage emptyImage;
+    private Background mBackground;
+
+    private boolean showBlackBars;
 
     public CoverFlowOpenGL(Context context) {
         super(context);
 
-        init(context);
+        init();
 	}
 
     public CoverFlowOpenGL(Context context, AttributeSet attrs){
         super(context, attrs);
 
-        init(context);
+        init();
     }
 
-    public void init(Context context){
+    public void setActivity(Activity activity){
+        this.mActivity = activity;
+        aQuery = new CoverflowQuery(mActivity);
+    }
+
+    public void init(){
+
         setEGLConfigChooser(8, 8, 8, 8, 16, 0);
 
         setRenderer(this);
@@ -104,18 +121,21 @@ public class CoverFlowOpenGL extends GLSurfaceView implements GLSurfaceView.Rend
         setZOrderMediaOverlay(true);
         setZOrderOnTop(true);
 
-        mCache = new DataCache<Integer, CoverFlowRecord>(MAX_TILES);
+//        int cacheForVisibleTiles = (visibleTiles * 2 + 1) + 10; // visible_left + center + visible_right + 10 additional
+        mCache = new DataCache<Integer, CoverImage>(maxTiles);//Math.min(maxTiles, cacheForVisibleTiles ));
         mLastOffset = 0;
         mOffset = 0;
-        mInitBackground = false;
-        mBgBitmapId = 0;
     }
 
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
-        mGLContext = gl;
-        mVerticesBuffer = makeFloatBuffer(GVertices);
-        mTexturesBuffer = makeFloatBuffer(GTextures);
+        gl.glEnable(GL10.GL_TEXTURE_2D);			//Enable Texture Mapping ( NEW )
+        gl.glShadeModel(GL10.GL_SMOOTH); 			//Enable Smooth Shading
+        gl.glClearColor(0.0f, 0.0f, 0.0f, 0.5f); 	//Black Background
+        gl.glDisable(GL10.GL_DEPTH_TEST); 			//Enables Depth Testing
+
+        //Really Nice Perspective Calculations
+        gl.glHint(GL10.GL_PERSPECTIVE_CORRECTION_HINT, GL10.GL_NICEST);
     }
 
     @Override
@@ -123,25 +143,45 @@ public class CoverFlowOpenGL extends GLSurfaceView implements GLSurfaceView.Rend
         mCache.clear();
 
         mWidth = w;
+        mHeight = h;
 
-        float imagew = w * 0.45f / SCALE / 2.0f;
-        float imageh = h * 0.45f / SCALE / 2.0f;
+        if(mBackground != null){
+            mBackground.setGL(gl);
+            mBackground.initBuffers(w, h);
+            mBackground.loadGLTexture();
+        }
+
+        if(emptyImage != null){
+            emptyImage.setGL(gl);
+            emptyImage.setViewportWidth(mWidth, mHeight);
+            emptyImage.setImageSize(imageSize);
+            emptyImage.loadGLTexture();
+        }
+
+        if(images != null && images.size() > 0){
+            for(CoverImage cImg : images){
+                if(cImg != null){
+                    cImg.setGL(gl);
+                    cImg.setViewportWidth(mWidth, mHeight);
+                    cImg.removeTexture();
+                }
+            }
+        }
+
+        float imagew = w * 0.45f / 2.0f;
+        float imageh = h * 0.45f / 2.0f;
         mTouchRect = new RectF(w / 2 - imagew, h / 2 - imageh, w / 2 + imagew, h / 2 + imageh);
 
-        gl.glViewport(0, 0, w, h);
+        gl.glViewport(0, 0, w, h); 	//Reset The Current Viewport
+        gl.glMatrixMode(GL10.GL_PROJECTION); 	//Select The Projection Matrix
+        gl.glLoadIdentity(); 					//Reset The Projection Matrix
 
-        float ratio = ((float) w) / h;
-        gl.glMatrixMode(GL10.GL_PROJECTION);
+        GLU.gluOrtho2D(gl, 0, w, 0, h);
+
+        gl.glMatrixMode(GL10.GL_MODELVIEW);
         gl.glLoadIdentity();
-        gl.glOrthof(-ratio * SCALE, ratio * SCALE, -1 * SCALE, 1 * SCALE, 1, 3);
 
-        float[] vertices = new float[] {
-                -ratio * SCALE, -SCALE, 0,
-                ratio * SCALE, -SCALE, 0,
-                -ratio * SCALE, SCALE, 0,
-                ratio * SCALE, SCALE, 0
-        };
-        mBgVerticesBuffer = makeFloatBuffer(vertices);
+//        updateCache();
     }
 	
 	@Override
@@ -162,7 +202,7 @@ public class CoverFlowOpenGL extends GLSurfaceView implements GLSurfaceView.Rend
 	}
 
     private float checkValid(float off) {
-        int max = mListener.getCount(this) - 1;
+        int max = imagesList.size() - 1;
         if (off < 0)
             return 0;
         else if (off > max)
@@ -254,7 +294,7 @@ public class CoverFlowOpenGL extends GLSurfaceView implements GLSurfaceView.Rend
 		
 		mDuration = Math.abs(mStartSpeed / FRICTION);
 		mStartTime = AnimationUtils.currentAnimationTimeMillis();
-		
+
 		mAnimationRunnable = new Runnable() {
 			@Override
 			public void run() {
@@ -278,11 +318,13 @@ public class CoverFlowOpenGL extends GLSurfaceView implements GLSurfaceView.Rend
 		if (mAnimationRunnable != null) {
 			mOffset = (float) Math.floor(mOffset + 0.5);
 			mOffset = checkValid(mOffset);
-			
+
 			requestRender();
 			
 			removeCallbacks(mAnimationRunnable);
 			mAnimationRunnable = null;
+
+//            updateCache();
 		}
 	}
 	
@@ -298,322 +340,179 @@ public class CoverFlowOpenGL extends GLSurfaceView implements GLSurfaceView.Rend
 		requestRender();
 	}
 
+//    private void updateCache(){
+//        int diff = VISIBLE_TILES * 2 + 5;
+//        int diffLeft = Math.max(0,(int)mOffset - diff);
+//        int diffRight = Math.min(images.size(),(int)mOffset + diff);
+//
+//        for(int i = 0; i < images.size(); i++){
+//            if(mCache.containsKey(i) && (i < diffLeft || i > diffRight)){
+//                mCache.removeObjectForKey(i);
+//            } else
+//            if(!mCache.containsKey(i) && i >= diffLeft && i <= diffRight){
+//                CoverImage img = images.get(i);
+//                img.tryLoadTexture(dataChangedListener, i);
+//                mCache.putObjectForKey(i, img);
+//            }
+//        }
+//    }
+
+
+    public int getMaxTiles() {
+        return maxTiles;
+    }
+
+    public void setMaxTiles(int maxTiles) {
+        this.maxTiles = maxTiles;
+        mCache = new DataCache<Integer, CoverImage>(maxTiles);
+    }
+
+    public int getVisibleTiles() {
+        return visibleTiles;
+    }
+
+    public void setVisibleTiles(int visibleTiles) {
+        this.visibleTiles = visibleTiles;
+    }
+
+    public void setImageQuality(EQuality size){
+        imageSize = size.getValue();
+    }
+
+    public void setImageShowBlackBars(boolean value){
+        showBlackBars = value;
+    }
+
+    public void setImagesList(List<String> imagesList){
+        this.imagesList = imagesList;
+
+        if(imagesList != null && imagesList.size() > 0){
+            images = new ArrayList<CoverImage>(imagesList.size());
+
+            for(String imageUrl : imagesList){
+                CoverImage ci = new CoverImage(mActivity, aQuery)
+                        .setUrl(imageUrl)
+                        .setImageSize(imageSize)
+                        .setShowBlackBars(showBlackBars);
+                images.add(ci);
+            }
+        }
+    }
+
     public void setCoverFlowListener(CoverFlowListener listener) {
         mListener = listener;
     }
 
-    public DataChangedListener getDataChangedListener(){
-        return dataChangedListener;
-    }
-
     public void setSelection(int position) {
         endAnimation();
+
+        if(images != null && images.size() > 0){
+            position = Math.min(position, images.size() - 1);
+        }
         mOffset = position;
+
         requestRender();
     }
 
-    public void clearTileCache() {
-        mCache.clear();
+	public void setBackgroundRes(int res) {
+        mBackground = new Background(mActivity, res);
+	}
+
+    public void setEmptyRes(int res) {
+        emptyImage = new EmptyImage(mActivity, res);
     }
-	
-	public void setBackgroundTexture(int res) {
-        mBgBitmapId = res;
-		mInitBackground = true;
-	}
 
-	private void initBg() {
-		mInitBackground = false;
-		if (mBgBitmapId != 0) {
-            Bitmap bitmap = BitmapFactory.decodeResource(getResources(), mBgBitmapId);
-            mBgBitmapId = 0;
+//    public void setBackgroundUrl(String url){
+//        mBackground = new Background(mActivity, url);
+//    }
 
-			int tmp = 1;
-			int w = bitmap.getWidth();
-			int h = bitmap.getHeight();
-			while (w > tmp || h > tmp) {
-				tmp <<= 1;
-			}
-			
-			int width = tmp;
-			int height = tmp;
-			Bitmap bm = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
-			Canvas cv = new Canvas(bm);
-			
-			int left = (width - w) / 2;
-			int top = (height - h) / 2;
-			cv.drawBitmap(bitmap, left, top, new Paint());
-			
-			GL10 gl = mGLContext;
-			
-			int[] tex = new int[1];
-			gl.glGenTextures(1, tex, 0);
-			mBgTexture = tex[0];
-			
-			gl.glBindTexture(GL10.GL_TEXTURE_2D, mBgTexture);
-			GLUtils.texImage2D(GL10.GL_TEXTURE_2D, 0, bm, 0);
-            bitmap.recycle();
-			bm.recycle();
-			
-			gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER, GL10.GL_NEAREST);
-	        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MAG_FILTER, GL10.GL_LINEAR);
-	        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S, GL10.GL_CLAMP_TO_EDGE);
-	        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T, GL10.GL_CLAMP_TO_EDGE);
-	        gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_REPLACE);
-			
-	        float[] textcoor = new float[] {
-	        		(tmp - w) / 2.0f / tmp, (tmp - h) / 2.0f / tmp,
-	        		(tmp + w) / 2.0f / tmp, (tmp - h) / 2.0f / tmp,
-	        		(tmp - w) / 2.0f / tmp, (tmp + h) / 2.0f / tmp,
-	        		(tmp + w) / 2.0f / tmp, (tmp + h) / 2.0f / tmp 
-	        };
-	        mBgTexturesBuffer = makeFloatBuffer(textcoor);
-		}
-	}
-	
+//    public void setEmtpyUrl(String url){
+//        emptyImage = new EmptyImage(mActivity, url);
+//    }
+
 	@Override
 	public void onDrawFrame(GL10 gl) {
-		gl.glMatrixMode(GL10.GL_MODELVIEW);
-		gl.glLoadIdentity();
-		GLU.gluLookAt(gl, 0, 0, 2, 0f, 0f, 0f, 0f, 1.0f, 0.0f);
-		
-		gl.glDisable(GL10.GL_DEPTH_TEST);
-		gl.glClearColor(0, 0, 0, 0);
-		gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
-		
-		gl.glEnableClientState(GL10.GL_VERTEX_ARRAY);
-		gl.glEnableClientState(GL10.GL_TEXTURE_COORD_ARRAY);
-		
-		drawBg(gl);
-		draw(gl);
-	}
-	
-	public void drawBg(GL10 gl) {
-        if (mInitBackground){
-            initBg();
+        gl.glMatrixMode(GL10.GL_MODELVIEW);
+        gl.glLoadIdentity();
+
+        // clear Screen and Depth Buffer
+        gl.glDisable(GL10.GL_DEPTH_TEST);
+        gl.glClearColor(0, 0, 0, 0);
+        gl.glClear(GL10.GL_COLOR_BUFFER_BIT);
+
+        // Drawing
+        gl.glTranslatef(0.0f, 0.0f, 0.0f);		// move 5 units INTO the screen
+
+        if(mBackground != null){
+            mBackground.draw(gl);
         }
 
-		if (mBgTexture != 0) {
-			gl.glPushMatrix();
-			
-			gl.glVertexPointer(3, GL10.GL_FLOAT, 0, mBgVerticesBuffer);
-			gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, mBgTexturesBuffer);
-			gl.glEnable(GL10.GL_TEXTURE_2D);
-			
-			gl.glBindTexture(GL10.GL_TEXTURE_2D, mBgTexture); // bind texture
-			gl.glDrawArrays(GL10.GL_TRIANGLE_STRIP, 0, 4);
-			
-			gl.glPopMatrix();
-		}
-	}
-	
-	private void draw(GL10 gl) {
-		mStopBackgroundThread = true;
-		gl.glPushMatrix();
-		
-		gl.glVertexPointer(3, GL10.GL_FLOAT, 0, mVerticesBuffer); // vertices of square
-		gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, mTexturesBuffer); // texture vertices
-		gl.glEnable(GL10.GL_TEXTURE_2D);
-		
-		gl.glEnable(GL10.GL_BLEND);
-		gl.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA);
+        final float offset = mOffset;
+        int i;
 
-		final float offset = mOffset;
-		int i = 0;
+        int max = imagesList != null ? imagesList.size() - 1 : 0;
+        int mid = (int) Math.floor(offset + 0.5);
+        int iStartPos = mid - visibleTiles;
 
-		int max = mListener != null ? mListener.getCount(this) - 1 : 0;
-	    int mid = (int) Math.floor(offset + 0.5);
-	    int iStartPos = mid - VISIBLE_TILES;
-	    
-	    if (iStartPos < 0)
-	        iStartPos = 0;
-	    // draw the left tiles
-	    for (i = iStartPos; i < mid; ++i) {
-	    	drawTile(i, i - offset, gl);
-	    }
-	    
-	    // draw the right tiles
-	    int iEndPos = mid + VISIBLE_TILES;
-	    if (iEndPos > max)
-	        iEndPos = max;
-	    for (i = iEndPos; i >= mid; --i) {
-	        drawTile(i, i - offset, gl);
-	    }
+        if (iStartPos < 0)
+            iStartPos = 0;
+        // draw the left tiles
+        for (i = iStartPos; i < mid; ++i) {
+            drawTile(i, i - offset, gl);
+        }
+
+        // draw the right tiles
+        int iEndPos = mid + visibleTiles;
+        if (iEndPos > max)
+            iEndPos = max;
+        for (i = iEndPos; i >= mid; --i) {
+            drawTile(i, i - offset, gl);
+        }
 
         //draw the center tile
         if (mLastOffset != (int) offset) {
-	        mListener.tileOnTop(this, (int) offset);
+            mListener.tileOnTop(this, (int) offset);
             mLastOffset = (int) offset;
         }
-	    
-	    gl.glPopMatrix();
-	    mStopBackgroundThread = false;
-	    //preLoadCache(iStartPos - 3, iEndPos + 3);
 	}
-	
-	private void drawTile(int position, float off, GL10 gl) {
-		final CoverFlowRecord fcr = getTileAtIndex(position, gl);
-        if (fcr != null && fcr.getTexture() != 0)  {
-            if (mMatrix == null) {
-                mMatrix = new float[16];
-                mMatrix[15] = 1;
-                mMatrix[10] = 1;
-                mMatrix[5] = 1;
-                mMatrix[0] = 1;
+
+    private void drawTile(int position, float off, GL10 gl) {
+        CoverImage cacheImg = mCache.objectForKey(position);
+
+        boolean canDraw = false;
+
+        if(cacheImg == null){
+            cacheImg = images.get(position);
+            cacheImg.tryLoadTexture(dataChangedListener, position);
+            mCache.putObjectForKey(position, cacheImg);
+
+            if (cacheImg.getTexture() != 0){
+                canDraw = true;
             }
-
-            float trans = off * SPREAD_IMAGE;
-            float f = off * FLANK_SPREAD;
-            if (f > FLANK_SPREAD)
-                f = FLANK_SPREAD;
-            else if (f < -FLANK_SPREAD)
-                f = -FLANK_SPREAD;
-
-            mMatrix[3] = -f;
-            mMatrix[0] = 1 - Math.abs(f);
-            float sc = 0.38f * mMatrix[0];
-            trans += f * 0.5f;
-
-            sc -= Math.abs(off) * 0.03; //next image is smaller then previous
-
-            gl.glPushMatrix();
-            gl.glBindTexture(GL10.GL_TEXTURE_2D, fcr.getTexture()); // bind texture
-
-
-            // draw bitmap
-            gl.glTranslatef(trans, 0, 0); // translate the picture to the right position
-            gl.glScalef(sc, sc, 1.0f); // scale the picture
-//            gl.glMultMatrixf(mMatrix, 0); // rotate the picture
-            gl.glDrawArrays(GL10.GL_TRIANGLE_STRIP, 0, 4);
-
-
-            // draw the reflection
-//            gl.glTranslatef(0, -2, 0);
-//            gl.glScalef(1, -1, 1);
-//            gl.glColor4f(1f, 1f, 1f, 0.5f);
-//            gl.glDrawArrays(GL10.GL_TRIANGLE_STRIP, 0, 4);
-//            gl.glColor4f(1, 1, 1, 1);
-
-            gl.glPopMatrix();
-
-
+        } else if(cacheImg.getTexture() != 0){
+            canDraw = true;
         }
-	}
 
-	private CoverFlowRecord getTileAtIndex(int position, GL10 gl) {
-		synchronized(this) {
-			CoverFlowRecord fcr = mCache.objectForKey(position);
-			if (fcr == null) {
-                long bitmapDuration = 0;
-				Bitmap bm = mListener != null ? mListener.getImage(this, position) : null;
-				if (bm == null)
-					return null;
+        float desiredSize = canDraw ? cacheImg.getDesiredSize() : emptyImage.getDesiredSize();
+        float spread = (mWidth - desiredSize) * 0.5f / visibleTiles;
+        float trans = off * spread;
+        float sc = 1.0f - (Math.abs(off) * 1 / (visibleTiles + 1));
 
-				int texture = imageToTexture(bm, gl);
-
-				fcr = new CoverFlowRecord(texture, gl);
-
-				mCache.putObjectForKey(position, fcr);
-			}
-			return fcr;
-		}
-	}
-
-	private int imageToTexture(Bitmap bitmap, GL10 gl) {
-		// generate texture
-		int[] texture = new int[1];
-		gl.glGenTextures(1, texture, 0);
-		gl.glBindTexture(GL10.GL_TEXTURE_2D, texture[0]);
-//
-        final Bitmap bm = createTextureBitmap(bitmap);
-        bitmap.recycle();
-		GLUtils.texImage2D(GL10.GL_TEXTURE_2D, 0, bm, 0); // draw the bitmap in the texture
-		bm.recycle();
-
-		// some texture settings
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER, GL10.GL_LINEAR);
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MAG_FILTER, GL10.GL_LINEAR);
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_S, GL10.GL_CLAMP_TO_EDGE);
-        gl.glTexParameterf(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_WRAP_T, GL10.GL_CLAMP_TO_EDGE);
-        gl.glTexEnvf(GL10.GL_TEXTURE_ENV, GL10.GL_TEXTURE_ENV_MODE, GL10.GL_MODULATE);
-		
-		return texture[0];
-	}
-	
-	// preload the cache from startindex(including) to endIndex(exclusive)
-	// you just can preload the cache after the view has been attached to the window
-	public void preLoadCache(final int startIndex, final int endIndex) {
-		mStopBackgroundThread = false;
-		if (mGLContext != null) {
-			new Thread(new Runnable() {
-				public void run() {
-					int start = startIndex;
-					if (start < 0)
-						start = 0;
-					
-					int max = mListener.getCount(CoverFlowOpenGL.this);
-					int end = endIndex > max ? max : endIndex;
-					
-					for (int i = start; i < end && !mStopBackgroundThread; ++i) {
-						getTileAtIndex(i, mGLContext);
-					}
-				}
-			}).run();
-		}
-	}
-
-
-
+        if(canDraw){
+            cacheImg.draw(gl, trans, sc);
+        } else {
+            emptyImage.draw(gl, trans, sc);
+        }
+    }
 
     private DataChangedListener dataChangedListener = new DataChangedListener() {
         @Override
         public void imageUpdated(int position) {
             synchronized(this) {
-                if(mCache != null && mCache.containsKey(position)){
-                    mCache.removeObjectForKey(position);
+                if(mOffset - visibleTiles < position || position < mOffset + visibleTiles  ){
                     requestRender();
                 }
             }
         }
     };
-
-
-    private static Bitmap createTextureBitmap(Bitmap bitmap) {
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        final Bitmap bm = Bitmap.createBitmap(IMAGE_SIZE, IMAGE_SIZE, Bitmap.Config.ARGB_8888);
-        Canvas cv = new Canvas(bm);
-        if (width > IMAGE_SIZE || height > IMAGE_SIZE) {
-            // scale the bitmap, make the width or height to the IMAGE_SIZE
-            Rect src = new Rect(0, 0, width, height);
-
-            float scale = 1.0f;
-            if (width > height)
-                scale = ((float) IMAGE_SIZE) / width;
-            else
-                scale = ((float) IMAGE_SIZE) / height;
-            width = (int) (width * scale);
-            height = (int) (height * scale);
-            float left = (IMAGE_SIZE - width) / 2.0f;
-            float top = (IMAGE_SIZE - height) / 2.0f;
-            RectF dst = new RectF(left, top, left + width, top + height);
-
-            cv.drawBitmap(bitmap, src, dst, new Paint());
-        } else {
-            float left = (IMAGE_SIZE - width) / 2.0f;
-            float top = (IMAGE_SIZE - height) / 2.0f;
-            cv.drawBitmap(bitmap, left, top, new Paint());
-        }
-
-        return bm;
-    }
-
-    private static FloatBuffer makeFloatBuffer(final float[] arr) {
-        ByteBuffer bb = ByteBuffer.allocateDirect(arr.length * 4);
-        bb.order(ByteOrder.nativeOrder());
-        FloatBuffer fb = bb.asFloatBuffer();
-        fb.put(arr);
-        fb.position(0);
-        return fb;
-    }
-
 }

@@ -2,10 +2,10 @@ android_coverflow_gallery
 =========================
 
 Android OpenGL ES 1.0 Coverflow Gallery
-(Version 0.1.0)
+(Version 1.0.0)
 
 Coverflow view uses OpenGL ES 1.0 for rendering images, and works very much like the standard Android Gallery view, but with the addition of the rotation of the images.
-Images loading are done via AQuery librayry.
+Images loading are done via AQuery library.
 
 Authors
 =======
@@ -17,7 +17,7 @@ Authors
 License
 =======
 
-    Copyright 2013 Vladyslav Yarovyi
+    Copyright 2013 - Android Coverflow Gallery. (Vladyslav Yarovyi)
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.

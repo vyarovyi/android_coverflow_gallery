@@ -1,25 +1,22 @@
 package com.masterofcode.android.coverflow_gallery_example;
 
 import android.app.Activity;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.widget.ImageView;
 import android.widget.Toast;
-import com.androidquery.AQuery;
 import com.masterofcode.android.coverflow_library.CoverFlowOpenGL;
 import com.masterofcode.android.coverflow_library.listeners.CoverFlowListener;
-import com.masterofcode.android.coverflow_library.listeners.DataChangedListener;
+import com.masterofcode.android.coverflow_library.utils.EQuality;
+
+import java.util.Arrays;
 
 public class MainActivity extends Activity {
 
     private CoverFlowOpenGL mCoverflowGallery;
-    private DataChangedListener dataChangedListener;
-    private AQuery aQuery;
 
     private static final String[] IMAGES = new String[]{
+            "https://lh6.googleusercontent.com/-ql3YNfdClJo/T3XvW9apmFI/AAAAAAAAAL4/_6HFDzbahc4/s1024/sample_image_08.jpg",
             "https://lh6.googleusercontent.com/-jZgveEqb6pg/T3R4kXScycI/AAAAAAAAAE0/xQ7CvpfXDzc/s1024/sample_image_01.jpg",
             "https://lh4.googleusercontent.com/-K2FMuOozxU0/T3R4lRAiBTI/AAAAAAAAAE8/a3Eh9JvnnzI/s1024/sample_image_02.jpg",
             "https://lh5.googleusercontent.com/-SCS5C646rxM/T3R4l7QB6xI/AAAAAAAAAFE/xLcuVv3CUyA/s1024/sample_image_03.jpg",
@@ -61,6 +58,21 @@ public class MainActivity extends Activity {
             "https://lh6.googleusercontent.com/-ZWHiPehwjTI/T3R41zuaKCI/AAAAAAAAAJg/hR3QJ1v3REg/s1024/sample_image_39.jpg"
     };
 
+//    private static final String[] IMAGES = new String[]{
+//            "https://lh6.googleusercontent.com/-ql3YNfdClJo/T3XvW9apmFI/AAAAAAAAAL4/_6HFDzbahc4/s1024/sample_image_08.jpg",
+//                        "https://lh3.googleusercontent.com/-n-xcJmiI0pg/T3R4mkSchHI/AAAAAAAAAFU/EoiNNb7kk3A/s1024/sample_image_05.jpg",
+//            "https://lh3.googleusercontent.com/-X43vAudm7f4/T3R4nGSChJI/AAAAAAAAAFk/3bna6D-2EE8/s1024/sample_image_06.jpg",
+//            "https://lh5.googleusercontent.com/-MpZneqIyjXU/T3R4nuGO1aI/AAAAAAAAAFg/r09OPjLx1ZY/s1024/sample_image_07.jpg",
+//            "https://lh6.googleusercontent.com/-ql3YNfdClJo/T3XvW9apmFI/AAAAAAAAAL4/_6HFDzbahc4/s1024/sample_image_08.jpg",
+//            "https://lh5.googleusercontent.com/-Pxa7eqF4cyc/T3R4oasvPEI/AAAAAAAAAF0/-uYDH92h8LA/s1024/sample_image_09.jpg",
+//            "https://lh4.googleusercontent.com/-Li-rjhFEuaI/T3R4o-VUl4I/AAAAAAAAAF8/5E5XdMnP1oE/s1024/sample_image_10.jpg",
+//            "https://lh5.googleusercontent.com/-_HU4fImgFhA/T3R4pPVIwWI/AAAAAAAAAGA/0RfK_Vkgth4/s1024/sample_image_11.jpg",
+//    };
+
+//    private static final String[] IMAGES = new String[]{
+//            "https://lh6.googleusercontent.com/-ql3YNfdClJo/T3XvW9apmFI/AAAAAAAAAL4/_6HFDzbahc4/s1024/sample_image_08.jpg",
+//    };
+
     private Handler mHandler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
@@ -73,53 +85,20 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
-        aQuery = new AQuery(this);
-
         initViews();
-    }
-
-    @Override
-    public void onDestroy(){
-        super.onDestroy();
-
-        //clean the file cache when root activity exit
-        //the resulting total cache size will be less than 3M
-//        if(isTaskRoot()){
-//            AQUtility.cleanCacheAsync(this);
-//        }
-
     }
 
     private void initViews(){
 
         mCoverflowGallery = (CoverFlowOpenGL) findViewById(R.id.coverFlow);
-
-        dataChangedListener = mCoverflowGallery.getDataChangedListener();
-
-        mCoverflowGallery.setSelection(2);
-        mCoverflowGallery.setBackgroundTexture(R.drawable.bg);
+        mCoverflowGallery.setActivity(this);
+        mCoverflowGallery.setBackgroundRes(R.drawable.bg);
+        mCoverflowGallery.setEmptyRes(R.drawable.empty);
+        mCoverflowGallery.setImageQuality(EQuality.GOOD);
+        mCoverflowGallery.setImageShowBlackBars(true);
+        mCoverflowGallery.setImagesList(Arrays.asList(IMAGES));
+        mCoverflowGallery.setSelection(0);
         mCoverflowGallery.setCoverFlowListener(new CoverFlowListener() {
-            @Override
-            public int getCount(CoverFlowOpenGL view) {
-                return IMAGES.length;
-            }
-
-            @Override
-            public Bitmap getImage(CoverFlowOpenGL anotherCoverFlow, int position) {
-
-                Bitmap image = aQuery.getCachedImage(IMAGES[position]);
-                if (image == null) {
-
-                    ImageView iView = new ImageView(MainActivity.this);
-
-                    aQuery.id(iView).image(IMAGES[position], true, true, 300, 0,
-                                new CustomBitmapCallback(position, dataChangedListener));
-
-                    return BitmapFactory.decodeResource(getResources(), R.drawable.empty);
-                } else {
-                    return image;
-                }
-            }
 
             @Override
             public void tileOnTop(CoverFlowOpenGL view, int position) {
