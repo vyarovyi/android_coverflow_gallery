@@ -46,6 +46,8 @@ public abstract class AbstractImage<T extends AbstractImage<T>> {
 
     protected DataChangedListener dataChangedListener;
 
+    protected Bitmap loadedBitmap;
+
     public AbstractImage(Activity activity,  int resId){
         this.mActivity = activity;
         this.resId = resId;
@@ -160,6 +162,9 @@ public abstract class AbstractImage<T extends AbstractImage<T>> {
 
         // Clean up
         bitmap.recycle();
+        if(loadedBitmap !=null){
+            loadedBitmap = null;
+        }
 
         initBuffers();
 

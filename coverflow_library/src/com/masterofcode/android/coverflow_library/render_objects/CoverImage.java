@@ -34,7 +34,8 @@ public class CoverImage extends AbstractImage<CoverImage> {
     private int loadTexture(){
         int result = 0;
 
-        Bitmap bm = mQuery.setShowBlackBars(showBlackBars).getCachedImage(mUrl, imageSize);
+        Bitmap bm = (loadedBitmap != null && !loadedBitmap.isRecycled())
+                ? loadedBitmap : mQuery.setShowBlackBars(showBlackBars).getCachedImage(mUrl, imageSize);
 
         if (bm == null) {
 
@@ -49,6 +50,7 @@ public class CoverImage extends AbstractImage<CoverImage> {
                         dataChangedListener.imageUpdated(index);
                     }
 
+                    loadedBitmap = bitmap;
                 }
             });
 
