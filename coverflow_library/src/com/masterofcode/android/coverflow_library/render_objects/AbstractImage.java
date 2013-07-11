@@ -7,9 +7,11 @@ import com.masterofcode.android.coverflow_library.listeners.DataChangedListener;
 import com.masterofcode.android.coverflow_library.utils.CoverflowQuery;
 
 import javax.microedition.khronos.opengles.GL10;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
-public abstract class AbstractImage {
+public abstract class AbstractImage<T extends AbstractImage<T>> {
     protected FloatBuffer vertexBuffer;	// buffer holding the vertices
     protected FloatBuffer textureBuffer;	// buffer holding the texture coordinates
 
@@ -49,45 +51,92 @@ public abstract class AbstractImage {
         this.resId = resId;
     }
 
-//    public AbstractImage(Activity activity, String url){
-//        this.mActivity = activity;
-//        this.mUrl = url;
-//    }
+    public AbstractImage(Activity activity,  CoverflowQuery query){
+        this.mActivity = activity;
+        this.mQuery = query;
+    }
 
-    public AbstractImage setUrl(String url){
+    public AbstractImage(Activity activity, String url){
+        this.mActivity = activity;
         this.mUrl = url;
-        return this;
     }
 
-    public AbstractImage setImageSize(int size){
+    public T setUrl(String url){
+        this.mUrl = url;
+        return (T)this;
+    }
+
+    public T setImageSize(int size){
         imageSize = size;
-        return this;
+        return (T)this;
     }
 
-    public AbstractImage setGL(GL10 gl){
+    public T setGL(GL10 gl){
         this.mGL = gl;
-        return this;
+        return (T)this;
     }
 
-    public AbstractImage setViewportWidth(int width, int height){
+    public T setViewportData(int width, int height){
         this.viewportWidth = width;
         this.viewportHeight = height;
-        return this;
+        return (T)this;
     }
 
-    public AbstractImage setShowBlackBars(boolean showBlackBars) {
+    public T setShowBlackBars(boolean showBlackBars) {
         this.showBlackBars = showBlackBars;
-        return this;
+        return (T)this;
     }
 
-    public abstract void initBuffers();
+    public void initBuffers(){
+
+        float sx = Math.abs((float)viewportWidth / imageSize);
+        float sy = Math.abs((float)viewportHeight / imageSize);
+
+        float scale = Math.min(sx, sy);
+
+        desiredSize = (imageSize * scale);
+        desiredSize -= desiredSize * 0.1f; //offset from the edge of the screen
+
+        float x = 0f;//(viewportWidth - desiredSize) * 0.5f;
+        float y = 0f;//(viewportHeight - desiredSize) * 0.5f;
+
+        float vertices[] = {
+                x, y,         //Bottom Left
+                x + desiredSize, y, 	//Bottom Right
+                x, y + desiredSize, 	//Top Left
+                x + desiredSize, y + desiredSize,    //Top Right
+        };
+
+
+        // a float has 4 bytes so we allocate for each coordinate 4 bytes
+        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(vertices.length * 4);
+        byteBuffer.order(ByteOrder.nativeOrder());
+
+        // allocates the memory from the byte buffer
+        vertexBuffer = byteBuffer.asFloatBuffer();
+
+        // fill the vertexBuffer with the vertices
+        vertexBuffer.put(vertices);
+
+        // set the cursor position to the beginning of the buffer
+        vertexBuffer.position(0);
+
+
+        byteBuffer = ByteBuffer.allocateDirect(texture.length * 4);
+        byteBuffer.order(ByteOrder.nativeOrder());
+        textureBuffer = byteBuffer.asFloatBuffer();
+        textureBuffer.put(texture);
+        textureBuffer.position(0);
+
+        isTextureInit = true;
+    }
 
     /**
      * Load the texture for the square
      */
-    private int loadGLTexture(Bitmap bitmap) {
+    protected int loadGLTexture(Bitmap bitmap) {
 
-        if(bitmap == null){
+        if(bitmap == null || mGL == null){
             return 0;
         }
 
@@ -159,12 +208,12 @@ public abstract class AbstractImage {
         gl.glVertexPointer(2, GL10.GL_FLOAT, 0, vertexBuffer);
         gl.glTexCoordPointer(2, GL10.GL_FLOAT, 0, textureBuffer);
 
-
         //TODO: optimize next calculations
-        float shift = (desiredSize - (desiredSize * scale)) * 0.5f ;
+        float shiftY = (desiredSize - (desiredSize * scale)) * 0.5f ;
+        float shiftX = translate > 0 ? (desiredSize - (desiredSize * scale)) : 0;
 
         gl.glTranslatef(-desiredSize* 0.5f, -desiredSize * 0.5f, 0); // set image center into 0.0
-        gl.glTranslatef(translate, shift, 0); // move image
+        gl.glTranslatef(translate + shiftX, shiftY, 0); // move image
         gl.glTranslatef(viewportWidth * 0.5f, viewportHeight * 0.5f, 0); // translate the picture to the center
 
         gl.glScalef(scale, scale, 1); // scale the picture

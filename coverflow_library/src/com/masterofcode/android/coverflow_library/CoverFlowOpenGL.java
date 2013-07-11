@@ -153,7 +153,7 @@ public class CoverFlowOpenGL extends GLSurfaceView implements GLSurfaceView.Rend
 
         if(emptyImage != null){
             emptyImage.setGL(gl);
-            emptyImage.setViewportWidth(mWidth, mHeight);
+            emptyImage.setViewportData(mWidth, mHeight);
             emptyImage.setImageSize(imageSize);
             emptyImage.loadGLTexture();
         }
@@ -162,7 +162,7 @@ public class CoverFlowOpenGL extends GLSurfaceView implements GLSurfaceView.Rend
             for(CoverImage cImg : images){
                 if(cImg != null){
                     cImg.setGL(gl);
-                    cImg.setViewportWidth(mWidth, mHeight);
+                    cImg.setViewportData(mWidth, mHeight);
                     cImg.removeTexture();
                 }
             }

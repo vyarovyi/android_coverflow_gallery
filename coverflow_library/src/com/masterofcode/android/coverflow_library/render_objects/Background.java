@@ -6,45 +6,23 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.opengl.GLUtils;
-import android.text.TextUtils;
 import com.masterofcode.android.coverflow_library.R;
 
 import javax.microedition.khronos.opengles.GL10;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
 
 
-public class Background {
+public class Background extends AbstractImage<Background>{
 
-    private FloatBuffer vertexBuffer;    // buffer holding the vertices
-
-    private FloatBuffer textureBuffer;    // buffer holding the texture coordinates
-    private float texture[] = null;
-
-    /**
-     * The texture pointer
-     */
     private int[] textures = new int[1];
 
-    private int resId;
-    private String url;
-
-    private GL10 mGL;
-    private Activity mActivity;
-
     public Background(Activity activity, int resId) {
-        this.mActivity = activity;
-        this.resId = resId;
+        super(activity, resId);
     }
 
     public Background(Activity activity, String url){
-        this.mActivity = activity;
-        this.url = url;
-    }
-
-    public void setGL(GL10 gl){
-        this.mGL = gl;
+        super(activity, url);
     }
 
     public void initBuffers(int width, int height) {
@@ -81,8 +59,6 @@ public class Background {
 
         if(resId != 0){
             initResTexuture();
-        } else if(!TextUtils.isEmpty(url)){
-            initUrlTexture();
         } else {
             resId = R.drawable.empty;
             initResTexuture();
@@ -157,17 +133,6 @@ public class Background {
         bm.recycle();
         bitmap.recycle();
     }
-
-    private void initUrlTexture(){
-        //TODO: add load from URL functionality
-    }
-
-    private void removeTexture(){
-        if (textures[0] != 0) {
-            mGL.glDeleteTextures(1, new int[] {textures[0]}, 0);
-        }
-    }
-
 
     /**
      * The draw method for the square with the GL context
